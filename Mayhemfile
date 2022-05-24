@@ -1,0 +1,6 @@
+project: rnshah9/goaccess
+target: goaccess
+
+cmds:
+  - cmd: /goaccess/goaccess -p /goaccess/config/goaccess.conf @@ -a -o out.html
+    filepath: test.log
