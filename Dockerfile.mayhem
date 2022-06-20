@@ -28,5 +28,5 @@ RUN ldd /goaccess/goaccess | tr -s '[:blank:]' '\n' | grep '^/' | xargs -I % sh 
 FROM alpine:3.13 as package
 
 COPY --from=builder /deps /deps
-COPY --from=builder /goaccess/goaccess /goaccess/goaccess
+COPY --from=builder /goaccess /goaccess
 ENV LD_LIBRARY_PATH=/deps
