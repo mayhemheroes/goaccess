@@ -20,13 +20,7 @@ RUN apk add --no-cache \
 COPY . /goaccess
 WORKDIR /goaccess
 RUN autoreconf -fiv
-RUN CC="clang" CFLAGS="-O3 -static" LIBS="$(pkg-config --libs openssl)" ./configure --prefix="" --enable-utf8 --with-openssl --enable-geoip=mmdb
+RUN CC="clang" CFLAGS="-O3 -static" LIBS="$(pkg-config --libs openssl)" ./configure --prefix=/install --enable-utf8 --with-openssl --enable-geoip=mmdb
 RUN make -j8 && make install
-RUN mkdir -p /deps
-RUN ldd /goaccess/goaccess | tr -s '[:blank:]' '\n' | grep '^/' | xargs -I % sh -c 'cp % /deps;'
-
 FROM alpine:3.13 as package
-
-COPY --from=builder /deps /deps
-COPY --from=builder /goaccess /goaccess
-ENV LD_LIBRARY_PATH=/deps
+COPY --from=builder /install /install

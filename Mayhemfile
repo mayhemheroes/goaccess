@@ -2,5 +2,4 @@ project: goaccess
 target: goaccess
 
 cmds:
-  - cmd: /goaccess/goaccess -p /goaccess/config/goaccess.conf test.log -a -o out.html
-    filepath: test.log
+  - cmd: /install/bin/goaccess -p /goaccess/config/goaccess.conf @@ -a -o out.html
