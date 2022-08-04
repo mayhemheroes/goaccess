@@ -844,6 +844,7 @@ parse_specifier (GLogItem * logitem, char **str, const char *p, const char *end)
 
   errno = 0;
   memset (&tm, 0, sizeof (tm));
+  tm.tm_isdst = -1;
   localtime_r (&now, &tm);
 
   switch (*p) {
@@ -863,7 +864,7 @@ parse_specifier (GLogItem * logitem, char **str, const char *p, const char *end)
     if (!(tkn = parse_string (&(*str), end, MAX (dspc, fmtspcs) + 1)))
       return spec_err (logitem, SPEC_TOKN_NUL, *p, NULL);
 
-    if (str_to_time (tkn, dfmt, &tm) != 0 || set_date (&logitem->date, tm) != 0) {
+    if (str_to_time (tkn, dfmt, &tm, 1) != 0 || set_date (&logitem->date, tm) != 0) {
       spec_err (logitem, SPEC_TOKN_INV, *p, tkn);
       free (tkn);
       return 1;
@@ -880,7 +881,7 @@ parse_specifier (GLogItem * logitem, char **str, const char *p, const char *end)
     if (!(tkn = parse_string (&(*str), end, 1)))
       return spec_err (logitem, SPEC_TOKN_NUL, *p, NULL);
 
-    if (str_to_time (tkn, tfmt, &tm) != 0 || set_time (&logitem->time, tm) != 0) {
+    if (str_to_time (tkn, tfmt, &tm, 1) != 0 || set_time (&logitem->time, tm) != 0) {
       spec_err (logitem, SPEC_TOKN_INV, *p, tkn);
       free (tkn);
       return 1;
@@ -896,7 +897,7 @@ parse_specifier (GLogItem * logitem, char **str, const char *p, const char *end)
     if (!(tkn = parse_string (&(*str), end, 1)))
       return spec_err (logitem, SPEC_TOKN_NUL, *p, NULL);
 
-    if (str_to_time (tkn, tfmt, &tm) != 0 || set_date (&logitem->date, tm) != 0 ||
+    if (str_to_time (tkn, tfmt, &tm, 1) != 0 || set_date (&logitem->date, tm) != 0 ||
         set_time (&logitem->time, tm) != 0) {
       spec_err (logitem, SPEC_TOKN_INV, *p, tkn);
       free (tkn);
@@ -1372,8 +1373,6 @@ special_specifier (GLogItem * logitem, char **str, char **p) {
   switch (**p) {
     /* XFF remote hostname (IP only) */
   case 'h':
-    if (logitem->host)
-      return 0;
     if (find_xff_host (logitem, str, p))
       return spec_err (logitem, SPEC_TOKN_NUL, 'h', NULL);
     break;

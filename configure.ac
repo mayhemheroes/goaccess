@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.69])
-AC_INIT([goaccess],[1.5.7],[hello@goaccess.io],[],[https://goaccess.io])
+AC_INIT([goaccess],[1.6.2],[hello@goaccess.io],[],[https://goaccess.io])
 AM_INIT_AUTOMAKE
 AC_CONFIG_SRCDIR([src/goaccess.c])
 AC_CONFIG_HEADERS([src/config.h])
@@ -243,6 +243,7 @@ AC_CHECK_FUNCS([strspn])
 AC_CHECK_FUNCS([strstr])
 AC_CHECK_FUNCS([strtol])
 AC_CHECK_FUNCS([strtoull])
+AC_CHECK_FUNCS([timegm])
 
 AC_CONFIG_FILES([Makefile po/Makefile.in])
 AC_OUTPUT

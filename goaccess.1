@@ -1,4 +1,4 @@
-.TH goaccess 1 "APRIL 2022" GNU+Linux "User Manuals"
+.TH goaccess 1 "JULY 2022" GNU+Linux "User Manuals"
 .SH NAME
 goaccess \- fast web log analyzer and interactive viewer.
 .SH SYNOPSIS
@@ -204,6 +204,19 @@ If the timestamp is given in milliseconds
 .I %*
 must be used as date-format.
 .TP
+\fB\-\-datetime-format=<date_time_format>
+The date and time format combines the two variables into a single option. This
+gives the ability to get the timezone from a request and convert it to another
+timezone for output. See
+.I --tz=<timezone>
+.IP
+They all begin with a percentage (%) sign. See `man strftime`. e.g.,
+.I %d/%b/%Y:%H:%M:%S %z.
+.IP
+Note that if --datetime-format is used,
+.I %x
+must be passed in the log-format variable to represent the date and time field.
+.TP
 \fB\-\-log-format=<logformat>
 The log-format variable followed by a space or
 .I \\\\t
@@ -374,6 +387,18 @@ Do not show the last updated field displayed in the HTML generated report.
 .TP
 \fB\-\-no-parsing-spinner
 Do now show the progress metrics and parsing spinner.
+.TP
+\fB\-\-tz=<timezone>
+Ouputs the report date/time data in the given timezone. Note that it uses the
+canonical timezone name. e.g.,
+.I Europe/Berlin
+or
+.I America/Chicago
+or
+.I Africa/Cairo
+If an invalid timezone name is given, the ouput will be in GMT. See
+.I --datetime-format
+in order to properly specify a timezone in the date/time format.
 .SS
 SERVER OPTIONS
 .P
@@ -442,6 +467,10 @@ e.g.,
 By default, it will attempt to connect to the generated report's hostname. If
 GoAccess is running on a remote server, the host of the remote server should be
 specified here. Also, make sure it is a valid host and NOT an http address.
+.TP
+\fB\-\-ping-interval=<secs>
+Enable WebSocket ping with specified interval in seconds. This helps prevent
+idle connections getting disconnected.
 .TP
 \fB\-\-fifo-in=<path/file>
 Creates a named pipe (FIFO) that reads from on the given path/file.
@@ -909,10 +938,31 @@ The host (the client IP address, either IPv4 or IPv6) in a X-Forwarded-For (XFF)
 
 It uses a special specifier which consists of a tilde before the host
 specifier, followed by the character(s) that delimit the XFF field, which are
-enclosed by curly braces (i.e., ~h{," })
+enclosed by curly braces. i.e., "~h{, }
 
-For example, ~h{," } is used in order to parse "11.25.11.53, 17.68.33.17" field
-which is delimited by a double quote, a comma, and a space.
+For example, "~h{, }" is used in order to parse "11.25.11.53, 17.68.33.17" field
+which is delimited by a comma and a space (enclosed by double quotes).
+
+.TS
+allbox;
+lb lb
+l l.
+XFF field	specifier
+T{
+.BR \[dq]192.1.2.3, \~192.68.33.17,\~192.1.1.2\[dq]
+T}	\[dq]~h{, }\[dq]
+T{
+.BR \[dq]192.1.2.12\[dq],\~\[dq]192.68.33.17\[dq]
+T}	~h{\[dq], }
+T{
+.BR 192.1.2.12,\~192.68.33.17
+T}	~h{, }
+T{
+.BR 192.1.2.14\~192.68.33.17\~192.1.1.2
+T}	~h{ }
+.TE
+
+
 .P
 .I Note:
 In order to get the average, cumulative and maximum time served in GoAccess,
@@ -1019,6 +1069,10 @@ or to parse from the beginning of the file while maintaining the pipe opened
 and applying a filter
 .IP
 # tail -f -n +0 access.log | grep -i --line-buffered 'firefox' | goaccess --log-format=COMBINED -o report.html --real-time-html -
+.P
+or to convert the log date timezone to a different timezone, e.g., Europe/Berlin
+.IP
+# goaccess access.log --log-format='%h %^[%x] "%r" %s %b "%R" "%u"' --datetime-format='%d/%b/%Y:%H:%M:%S %z' --tz=Europe/Berlin --date-spec=min
 .SS
 MULTIPLE LOG FILES
 .P
@@ -1217,6 +1271,9 @@ default value of 366 items per panel.
 .P
 A hit is a request (line in the access log), e.g., 10 requests = 10 hits. HTTP
 requests with the same IP, date, and user agent are considered a unique visit.
+.P
+The generated report will attempt to reconnect to the WebSocket server after 1
+second with exponential backoff. It will attempt to connect 20 times.
 .SH BUGS
 If you think you have found a bug, please send me an email to
 .I goaccess@prosoftcorp.com

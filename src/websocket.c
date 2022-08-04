@@ -88,9 +88,9 @@ static struct pollfd *fdstate = NULL;
 static nfds_t nfdstate = 0;
 static WSConfig wsconfig = { 0 };
 
-static void handle_read_close (int conn, WSClient * client, WSServer * server);
-static void handle_reads (int conn, WSServer * server);
-static void handle_writes (int conn, WSServer * server);
+static void handle_read_close (int *conn, WSClient * client, WSServer * server);
+static void handle_reads (int *conn, WSServer * server);
+static void handle_writes (int *conn, WSServer * server);
 #ifdef HAVE_LIBSSL
 static int shutdown_ssl (WSClient * client);
 #endif
@@ -878,7 +878,7 @@ handle_accept_ssl (WSClient * client, WSServer * server) {
  * On error or if no SSL pending status, 1 is returned.
  * On success, the TLS/SSL pending action is called and 0 is returned */
 static int
-handle_ssl_pending_rw (int conn, WSServer * server, WSClient * client) {
+handle_ssl_pending_rw (int *conn, WSServer * server, WSClient * client) {
   if (!wsconfig.use_ssl)
     return 1;
 
@@ -1599,9 +1599,12 @@ ws_get_handshake (WSClient * client, WSServer * server) {
   readh = client->headers->buflen;
   /* Probably the connection was closed before finishing handshake */
   if ((bytes = read_socket (client, buf + readh, WS_MAX_HEAD_SZ - readh)) < 1) {
-    if (client->status & WS_CLOSE)
+    if (client->status & WS_CLOSE) {
+      LOG (("Connection aborted %d [%s]...\n", client->listener, client->remote_ip));
       http_error (client, WS_BAD_REQUEST_STR);
-    return bytes;
+    }
+    LOG (("Can't establish handshake %d [%s]...\n", client->listener, client->remote_ip));
+    return ws_set_status (client, WS_CLOSE, bytes);
   }
   client->headers->buflen += bytes;
 
@@ -1609,21 +1612,26 @@ ws_get_handshake (WSClient * client, WSServer * server) {
 
   /* Must have a \r\n\r\n */
   if (strstr (buf, "\r\n\r\n") == NULL) {
-    if (strlen (buf) < WS_MAX_HEAD_SZ)
+    if (strlen (buf) < WS_MAX_HEAD_SZ) {
+      LOG (("Headers too long %d [%s]...\n", client->listener, client->remote_ip));
       return ws_set_status (client, WS_READING, bytes);
+    }
 
+    LOG (("Invalid newlines for handshake %d [%s]...\n", client->listener, client->remote_ip));
     http_error (client, WS_BAD_REQUEST_STR);
     return ws_set_status (client, WS_CLOSE, bytes);
   }
 
   /* Ensure we have valid HTTP headers for the handshake */
   if (parse_headers (client->headers) != 0) {
+    LOG (("Invalid headers for handshake %d [%s]...\n", client->listener, client->remote_ip));
     http_error (client, WS_BAD_REQUEST_STR);
     return ws_set_status (client, WS_CLOSE, bytes);
   }
 
   /* Ensure we have the required headers */
   if (ws_verify_req_headers (client->headers) != 0) {
+    LOG (("Missing headers for handshake %d [%s]...\n", client->listener, client->remote_ip));
     http_error (client, WS_BAD_REQUEST_STR);
     return ws_set_status (client, WS_CLOSE, bytes);
   }
@@ -2145,6 +2153,8 @@ read_client_data (WSClient * client, WSServer * server) {
 /* Handle a tcp close connection. */
 static void
 handle_tcp_close (int conn, WSClient * client, WSServer * server) {
+  LOG (("Closing TCP %d [%s]\n", client->listener, client->remote_ip));
+
 #ifdef HAVE_LIBSSL
   if (client->ssl)
     shutdown_ssl (client);
@@ -2178,18 +2188,20 @@ handle_tcp_close (int conn, WSClient * client, WSServer * server) {
 
   /* remove client from our list */
   ws_remove_client_from_list (client, server);
-  LOG (("Active: %d\n", list_count (server->colist)));
+  LOG (("Connection Closed.\nActive: %d\n", list_count (server->colist)));
 }
 
 /* Handle a tcp read close connection. */
 static void
-handle_read_close (int conn, WSClient * client, WSServer * server) {
-  if (client->status & WS_SENDING) {
+handle_read_close (int *conn, WSClient * client, WSServer * server) {
+  /* We can still try to send a message to the client if not forcing close, (nice
+   * goodbye), else proceed to close it */
+  if (!(client->status & WS_CLOSE) && client->status & WS_SENDING) {
     server->closing = 1;
     set_pollfd (client->listener, POLLOUT);
     return;
   }
-  handle_tcp_close (conn, client, server);
+  handle_tcp_close (*conn, client, server);
 }
 
 /* Handle a new socket connection. */
@@ -2211,16 +2223,18 @@ handle_accept (int listener, WSServer * server) {
     client->sslstatus |= WS_TLS_ACCEPTING;
 #endif
 
-  LOG (("Accepted: %d %s\n", newfd, client->remote_ip));
+  LOG (("Accepted: %d [%s]\n", newfd, client->remote_ip));
 }
 
 /* Handle a tcp read. */
 static void
-handle_reads (int conn, WSServer * server) {
+handle_reads (int *conn, WSServer * server) {
   WSClient *client = NULL;
 
-  if (!(client = ws_get_client_from_list (conn, &server->colist)))
+  if (!(client = ws_get_client_from_list (*conn, &server->colist)))
     return;
+
+  LOG (("Handling read %d [%s]...\n", client->listener, client->remote_ip));
 
 #ifdef HAVE_LIBSSL
   if (handle_ssl_pending_rw (conn, server, client) == 0)
@@ -2235,6 +2249,7 @@ handle_reads (int conn, WSServer * server) {
   /* An error occurred while reading data or connection closed */
   if ((client->status & WS_CLOSE)) {
     handle_read_close (conn, client, server);
+    *conn = -1;
   }
 }
 
@@ -2246,10 +2261,10 @@ handle_write_close (int conn, WSClient * client, WSServer * server) {
 
 /* Handle a tcp write. */
 static void
-handle_writes (int conn, WSServer * server) {
+handle_writes (int *conn, WSServer * server) {
   WSClient *client = NULL;
 
-  if (!(client = ws_get_client_from_list (conn, &server->colist)))
+  if (!(client = ws_get_client_from_list (*conn, &server->colist)))
     return;
 
 #ifdef HAVE_LIBSSL
@@ -2268,7 +2283,7 @@ handle_writes (int conn, WSServer * server) {
    * waiting from the last send() from the server to the client.  e.g.,
    * sending status code */
   if ((client->status & WS_CLOSE) && !(client->status & WS_SENDING))
-    handle_write_close (conn, client, server);
+    handle_write_close (*conn, client, server);
 }
 
 /* Create named pipe (FIFO) with the given pipe name.
@@ -2494,19 +2509,52 @@ clear_fifo_packet (WSPipeIn * pipein) {
 
 /* Broadcast to all connected clients the given message. */
 static int
-ws_broadcast_fifo (void *value, void *user_data) {
-  WSClient *client = value;
-  WSPacket *packet = user_data;
+ws_broadcast_fifo (WSClient * client, WSServer * server) {
+  WSPacket *packet = server->pipein->packet;
 
-  if (client == NULL || user_data == NULL)
-    return 1;
-  /* no handshake for this client */
-  if (client->headers == NULL || client->headers->ws_accept == NULL)
+  LOG (("Broadcasting to %d [%s] ", client->listener, client->remote_ip));
+  if (client == NULL)
     return 1;
 
+  if (client->headers == NULL || client->headers->ws_accept == NULL) {
+    /* no handshake for this client */
+    LOG (("No headers. Closing %d [%s]\n", client->listener, client->remote_ip));
+    return -1;
+  }
+
+  LOG ((" - Sending...\n"));
   ws_send_data (client, packet->type, packet->data, packet->size);
 
   return 0;
+}
+
+static void
+ws_broadcast_fifo_to_clients (WSServer * server) {
+  WSClient *client = NULL;
+  void *data = NULL;
+  uint32_t *close_list = NULL;
+  int n = 0, idx = 0, i = 0, listener = 0;
+
+  if ((n = list_count (server->colist)) == 0)
+    return;
+
+  close_list = xcalloc (n, sizeof (uint32_t));
+  /* *INDENT-OFF* */
+  GSLIST_FOREACH (server->colist, data, {
+    client = data;
+    if (ws_broadcast_fifo(client, server) == -1)
+      close_list[idx++] = client->listener;
+  });
+  /* *INDENT-ON* */
+
+  client = NULL;
+  for (i = 0; i < idx; ++i) {
+    listener = close_list[i];
+    if ((client = ws_get_client_from_list (listener, &server->colist)))
+      handle_tcp_close (listener, client, server);
+  }
+
+  free (close_list);
 }
 
 /* Send a message from the incoming named pipe to specific client
@@ -2518,8 +2566,12 @@ ws_send_strict_fifo_to_client (WSServer * server, int listener, WSPacket * pa) {
   if (!(client = ws_get_client_from_list (listener, &server->colist)))
     return;
   /* no handshake for this client */
-  if (client->headers == NULL || client->headers->ws_accept == NULL)
+  if (client->headers == NULL || client->headers->ws_accept == NULL) {
+    LOG (("No headers. Closing %d [%s]\n", client->listener, client->remote_ip));
+
+    handle_tcp_close (client->listener, client, server);
     return;
+  }
   ws_send_data (client, pa->type, pa->data, pa->len);
 }
 
@@ -2643,7 +2695,7 @@ handle_strict_fifo (WSServer * server) {
   if (listener != 0)
     ws_send_strict_fifo_to_client (server, listener, *pa);
   else
-    list_foreach (server->colist, ws_broadcast_fifo, *pa);
+    ws_broadcast_fifo_to_clients (server);
   clear_fifo_packet (pi);
 }
 
@@ -2676,7 +2728,7 @@ handle_fixed_fifo (WSServer * server) {
   }
 
   /* broadcast message to all clients */
-  list_foreach (server->colist, ws_broadcast_fifo, *pa);
+  ws_broadcast_fifo_to_clients (server);
   clear_fifo_packet (pi);
 }
 
@@ -2742,7 +2794,7 @@ ws_socket (int *listener) {
  * descriptors until we have something to read or write. */
 void
 ws_start (WSServer * server) {
-  int listener = -1;
+  int listener = -1, ret = 0;
   struct pollfd *cfdstate = NULL, *pfd, *efd;
   nfds_t ncfdstate = 0;
   bool run = true;
@@ -2770,12 +2822,13 @@ ws_start (WSServer * server) {
     if (ncfdstate != nfdstate) {
       free (cfdstate);
       cfdstate = xmalloc (nfdstate * sizeof (*cfdstate));
+      memset (cfdstate, 0, sizeof (*cfdstate) * nfdstate);
       ncfdstate = nfdstate;
     }
     memcpy (cfdstate, fdstate, ncfdstate * sizeof (*cfdstate));
 
     /* yep, wait patiently */
-    if (poll (cfdstate, nfdstate, -1) == -1) {
+    if ((ret = poll (cfdstate, nfdstate, -1)) == -1) {
       switch (errno) {
       case EINTR:
         LOG (("A signal was caught on poll(2)\n"));
@@ -2788,6 +2841,13 @@ ws_start (WSServer * server) {
     /* iterate over existing connections */
     efd = cfdstate + nfdstate;
     for (pfd = cfdstate; pfd < efd; pfd++) {
+      if (pfd->revents & POLLHUP)
+        LOG (("Got POLLHUP %d\n", pfd->fd));
+      if (pfd->revents & POLLNVAL)
+        LOG (("Got POLLNVAL %d\n", pfd->fd));
+      if (pfd->revents & POLLERR)
+        LOG (("Got POLLERR %d\n", pfd->fd));
+
       /* handle self-pipe trick */
       if (pfd->fd == server->self_pipe[0]) {
         if (pfd->revents & POLLIN) {
@@ -2815,11 +2875,11 @@ ws_start (WSServer * server) {
             if (ffd != NULL)
               ffd->events &= ~POLLIN;
           } else
-            handle_reads (pfd->fd, server);
+            handle_reads (&pfd->fd, server);
         }
         /* handle sending data to a client */
         if (pfd->revents & POLLOUT)
-          handle_writes (pfd->fd, server);
+          handle_writes (&pfd->fd, server);
       }
     }
   }

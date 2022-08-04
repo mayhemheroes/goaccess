@@ -56,6 +56,12 @@ window.GoAccess = window.GoAccess || {
 		};
 		this.AppPrefs = GoAccess.Util.merge(this.AppPrefs, this.opts.prefs);
 
+		// WebSocket reconnection
+		this.wsDelay    = this.currDelay = 1E3;
+		this.maxDelay   = 20E3;
+		this.retries    = 0;
+		this.maxRetries = 20;
+
 		if (GoAccess.Util.hasLocalStorage()) {
 			var ls = JSON.parse(localStorage.getItem('AppPrefs'));
 			this.AppPrefs = GoAccess.Util.merge(this.AppPrefs, ls);
@@ -83,14 +89,31 @@ window.GoAccess = window.GoAccess || {
 		return panel ? this.AppData[panel] : this.AppData;
 	},
 
+	reconnect: function (wsConn) {
+		if (this.retries >= this.maxRetries)
+			return window.clearTimeout(this.wsTimer);
+
+		this.retries++;
+		if (this.currDelay < this.maxDelay)
+			this.currDelay *= 2; // Exponential backoff
+		this.setWebSocket(wsConn);
+	},
+
 	setWebSocket: function (wsConn) {
-		var host = null;
+		var host = null, pingId = null;
 		host = wsConn.url ? wsConn.url : window.location.hostname ? window.location.hostname : "localhost";
 		var str = /^(wss?:\/\/)?[^\/]+:[0-9]{1,5}\//.test(host + "/") ? host : String(host + ':' + wsConn.port);
 		str = !/^wss?:\/\//i.test(str) ? (window.location.protocol === "https:" ? 'wss://' : 'ws://') + str : str;
 
 		var socket = new WebSocket(str);
 		socket.onopen = function (event) {
+			this.currDelay = this.wsDelay;
+			this.retries = 0;
+
+			// attempt to keep connection alive (e.g., ping/pong)
+			if (wsConn.ping_interval)
+				pingId = setInterval(() => { socket.send('ping'); }, wsConn.ping_interval * 1E3);
+
 			GoAccess.Nav.WSOpen();
 		}.bind(this);
 
@@ -102,6 +125,9 @@ window.GoAccess = window.GoAccess || {
 
 		socket.onclose = function (event) {
 			GoAccess.Nav.WSClose();
+			window.clearInterval(pingId);
+			socket = null;
+			this.wsTimer = setTimeout(() => { this.reconnect(wsConn); }, this.currDelay);
 		}.bind(this);
 	},
 };

@@ -108,6 +108,8 @@ typedef struct GConf_
   const char *static_files[MAX_EXTENSIONS];     /* static extensions */
 
   /* Log/date/time formats */
+  const char *tz_name;                    /* Canonical TZ name, e.g., America/Chicago */
+  char *date_time_format;           /* date & time format */
   char *date_format;                /* date format */
   char *date_num_format;            /* numeric date format %Y%m%d */
   char *time_format;                /* time format as given by the user */
@@ -138,6 +140,7 @@ typedef struct GConf_
   const char *sslcert;              /* TLS/SSL path to certificate */
   const char *sslkey;               /* TLS/SSL path to private key */
   const char *ws_url;               /* WebSocket URL */
+  const char *ping_interval;        /* WebSocket ping interval in seconds */
   const char *unix_socket;          /* unix socket to bind to */
 
   /* User flags */

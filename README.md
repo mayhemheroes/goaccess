@@ -1,4 +1,4 @@
-GoAccess [![Build Status](https://travis-ci.org/allinurl/goaccess.svg?branch=master)](https://travis-ci.org/allinurl/goaccess) [![GoAccess](https://goaccess.io/badge)](https://goaccess.io)
+GoAccess [![C build](https://github.com/allinurl/goaccess/actions/workflows/build-test.yml/badge.svg)](https://github.com/allinurl/goaccess/actions/workflows/build-test.yml) [![GoAccess](https://goaccess.io/badge)](https://goaccess.io)
 ========
 
 ## What is it? ##
@@ -97,9 +97,9 @@ GoAccess can be compiled and used on *nix systems.
 
 Download, extract and compile GoAccess with:
 
-    $ wget https://tar.goaccess.io/goaccess-1.5.7.tar.gz
-    $ tar -xzvf goaccess-1.5.7.tar.gz
-    $ cd goaccess-1.5.7/
+    $ wget https://tar.goaccess.io/goaccess-1.6.2.tar.gz
+    $ tar -xzvf goaccess-1.6.2.tar.gz
+    $ cd goaccess-1.6.2/
     $ ./configure --enable-utf8 --enable-geoip=mmdb
     $ make
     # make install

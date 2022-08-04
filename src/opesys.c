@@ -129,7 +129,9 @@ static const char *os[][2] = {
  * returned. */
 static char *
 get_real_android (const char *droid) {
-  if (strstr (droid, "11"))
+  if (strstr (droid, "12"))
+    return alloc_string ("Android 12");
+  else if (strstr (droid, "11"))
     return alloc_string ("Android 11");
   else if (strstr (droid, "10"))
     return alloc_string ("Android 10");
@@ -213,7 +215,9 @@ get_real_win (const char *win) {
  * returned. */
 static char *
 get_real_mac_osx (const char *osx) {
-  if (strstr (osx, "12.0"))
+  if (strstr (osx, "13.0"))
+    return alloc_string ("macOS 12 Ventura");
+  else if (strstr (osx, "12.0"))
     return alloc_string ("macOS 12 Monterey");
   else if (strstr (osx, "11.0"))
     return alloc_string ("macOS 11 Big Sur");

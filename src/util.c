@@ -32,7 +32,8 @@
 #define _LARGEFILE64_SOURCE
 #define _FILE_OFFSET_BITS 64
 
-#define _XOPEN_SOURCE     700
+#define _GNU_SOURCE
+#define _DEFAULT_SOURCE
 
 #include <arpa/inet.h>
 #include <ctype.h>
@@ -511,13 +512,37 @@ get_visitors_date (const char *odate, const char *from, const char *to) {
   return xstrdup ("---");
 }
 
+static time_t
+tm2time (const struct tm *src) {
+  struct tm tmp;
+
+  tmp = *src;
+  return timegm (&tmp) - src->tm_gmtoff;
+}
+
+void
+set_tz (void) {
+  char tz[TZ_NAME_LEN] = { 0 };
+
+  if (!conf.tz_name)
+    return;
+
+  snprintf (tz, TZ_NAME_LEN, "TZ=%s", conf.tz_name);
+  if ((putenv (tz)) != 0) {
+    LOG_DEBUG (("Can't set TZ env variable %s: %s\n", tz, strerror (errno)));
+    return;
+  }
+  tzset ();
+}
+
 /* Format the given date/time according the given format.
  *
  * On error, 1 is returned.
  * On success, 0 is returned. */
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
 int
-str_to_time (const char *str, const char *fmt, struct tm *tm) {
+str_to_time (const char *str, const char *fmt, struct tm *tm, int tz) {
+  time_t t;
   char *end = NULL, *sEnd = NULL;
   unsigned long long ts = 0;
   int us, ms;
@@ -550,6 +575,10 @@ str_to_time (const char *str, const char *fmt, struct tm *tm) {
       return 1;
 
     seconds = (us) ? ts / SECS : ((ms) ? ts / MILS : ts);
+
+    if (conf.tz_name && tz)
+      set_tz ();
+
     /* if GMT needed, gmtime_r instead of localtime_r. */
     localtime_r (&seconds, tm);
 
@@ -559,6 +588,17 @@ str_to_time (const char *str, const char *fmt, struct tm *tm) {
   end = strptime (str, fmt, tm);
   if (end == NULL || *end != '\0')
     return 1;
+
+  if (!tz || !conf.tz_name)
+    return 0;
+
+  if ((t = tm2time (tm)) == -1) {
+    LOG_DEBUG (("Can't set time via tm2time() %s: %s\n", str, strerror (errno)));
+    return 0;
+  }
+
+  set_tz ();
+  localtime_r (&t, tm);
 
   return 0;
 }
@@ -575,7 +615,8 @@ convert_date (char *res, const char *data, const char *from, const char *to, int
   timestamp = time (NULL);
   localtime_r (&timestamp, &now_tm);
 
-  if (str_to_time (data, from, &tm) != 0)
+  /* This assumes that the the given date is already in the correct timezone. */
+  if (str_to_time (data, from, &tm, 0) != 0)
     return 1;
 
   /* if not a timestamp, use current year if not passed */
