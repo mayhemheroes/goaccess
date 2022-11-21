@@ -22,6 +22,8 @@ WORKDIR /goaccess
 RUN autoreconf -fiv
 RUN CC="clang" CFLAGS="-O3 -static" LIBS="$(pkg-config --libs openssl)" ./configure --prefix=/install --enable-utf8 --with-openssl --enable-geoip=mmdb
 RUN make -j8 && make install
+
 FROM alpine:3.13 as package
 COPY --from=builder /install /install
 COPY --from=builder /goaccess/config /goaccess/config
+COPY --from=builder /goaccess/bin2c /

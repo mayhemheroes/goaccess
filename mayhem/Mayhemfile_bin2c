@@ -1,0 +1,5 @@
+project: goaccess
+target: bin2c
+
+cmds:
+  - cmd: /bin2c @@ out a
