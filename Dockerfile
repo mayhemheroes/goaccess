@@ -1,41 +1,33 @@
-# Build stage
-FROM alpine:3.20 AS builds
+FROM alpine:3 AS builds
 RUN apk add --no-cache \
     autoconf \
     automake \
     build-base \
     clang \
+    clang-static \
     gettext-dev \
+    gettext-static \
+    git \
     libmaxminddb-dev \
-    openssl-dev \
+    libmaxminddb-static \
+    libressl-dev \
     linux-headers \
     ncurses-dev \
-    pkgconf \
+    ncurses-static \
     tzdata
 
 # GoAccess
 COPY . /goaccess
 WORKDIR /goaccess
-RUN autoreconf -fiv && rm -rf autom4te.cache
-RUN CC="clang" CFLAGS="-O3" LIBS="$(pkg-config --libs openssl)" ./configure --prefix=/usr --enable-utf8 --with-openssl --enable-geoip=mmdb
-RUN make -j$(nproc) && make DESTDIR=/dist install
-# Check dynamic dependencies
-RUN ldd /dist/usr/bin/goaccess && echo "Dependencies checked"
+RUN autoreconf -fiv
+RUN CC="clang" CFLAGS="-O3 -static" LIBS="$(pkg-config --libs openssl)" ./configure --prefix="" --enable-utf8 --with-openssl --enable-geoip=mmdb
+RUN make && make DESTDIR=/dist install
 
-# Runtime stage
-FROM alpine:3.20
-RUN apk add --no-cache \
-    gettext-libs \
-    libmaxminddb \
-    ncurses-libs \
-    openssl \
-    tzdata
-# Copy GoAccess binary and assets
-COPY --from=builds /dist/usr/bin/goaccess /usr/bin/goaccess
-COPY --from=builds /dist/usr/share /usr/share
+# Container
+FROM busybox:musl
+COPY --from=builds /dist /
 COPY --from=builds /usr/share/zoneinfo /usr/share/zoneinfo
-# Set up volume and port
 VOLUME /var/www/goaccess
 EXPOSE 7890
-ENTRYPOINT ["/usr/bin/goaccess"]
+ENTRYPOINT ["/bin/goaccess"]
 CMD ["--help"]

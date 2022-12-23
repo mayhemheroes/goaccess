@@ -1,0 +1,5 @@
+project: goaccess
+target: goaccess
+
+cmds:
+  - cmd: /install/bin/goaccess -p /goaccess/config/goaccess.conf @@ -a -o /dev/null
